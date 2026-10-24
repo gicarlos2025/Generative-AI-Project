@@ -1,0 +1,1 @@
+"""Generative AI application package."""

@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101820">
+  <title>Conversa — Assistente RAG</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --page: #101820;
+      --panel: #17232d;
+      --panel-raised: #1d2c37;
+      --line: #2b3d49;
+      --text: #edf3f5;
+      --muted: #9baeb8;
+      --accent: #7ae0c3;
+      --accent-ink: #09271f;
+      --danger: #ffb4a9;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(ellipse at 50% -35%, #294452 0, transparent 56%),
+        var(--page);
+    }
+    button, textarea, select { font: inherit; }
+    .shell { width: min(100% - 32px, 900px); margin: 0 auto; padding: 28px 0 24px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .mark {
+      display: grid; width: 42px; height: 42px; place-items: center;
+      border: 1px solid #41675f; border-radius: 14px;
+      color: var(--accent); background: #1b3937; font-size: 21px;
+    }
+    h1 { margin: 0; font-size: 16px; letter-spacing: .01em; }
+    .subtitle { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .status {
+      display: inline-flex; align-items: center; gap: 8px;
+      color: var(--muted); font-size: 12px;
+    }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+    main { margin-top: 24px; }
+    .intro { margin: 0 0 16px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+    .chat {
+      display: flex; min-height: min(58vh, 590px); flex-direction: column; gap: 16px;
+      overflow-y: auto; padding: 22px; border: 1px solid var(--line); border-radius: 20px;
+      background: color-mix(in srgb, var(--panel) 94%, transparent);
+    }
+    .empty-state { display: grid; min-height: 330px; align-content: center; justify-items: center; text-align: center; }
+    .empty-icon { display: grid; width: 58px; height: 58px; place-items: center; border: 1px solid var(--line); border-radius: 18px; background: var(--panel-raised); font-size: 25px; }
+    .empty-state h2 { margin: 16px 0 6px; font-size: 18px; }
+    .empty-state p { max-width: 440px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
+    .message { display: flex; flex-direction: column; gap: 6px; max-width: min(80%, 680px); }
+    .message.user { align-self: flex-end; align-items: flex-end; }
+    .message.assistant { align-self: flex-start; align-items: flex-start; }
+    .message-label { color: var(--muted); font-size: 11px; }
+    .bubble { padding: 12px 15px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel-raised); font-size: 14px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .wiki-illustration { margin: 12px 0; }
+    .wiki-illustration img { display: block; max-width: 100%; max-height: 480px; border-radius: 10px; object-fit: contain; }
+    .wiki-illustration figcaption { margin-top: 6px; color: var(--muted); font-size: 12px; }
+    .bubble a { color: var(--accent); }
+    .user .bubble { border-color: #345d54; background: #203b39; }
+    .error .bubble { border-color: #69453f; color: var(--danger); }
+    .composer {
+      display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px;
+      margin-top: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 18px;
+      background: var(--panel);
+    }
+    textarea {
+      width: 100%; min-height: 48px; max-height: 180px; resize: vertical;
+      padding: 13px 12px; border: 0; outline: 0; color: var(--text);
+      background: transparent; line-height: 1.5;
+    }
+    textarea::placeholder { color: #80939d; }
+    .controls { display: flex; align-items: flex-end; gap: 9px; }
+    select {
+      max-width: 154px; height: 42px; padding: 0 10px; border: 1px solid var(--line);
+      border-radius: 12px; color: var(--text); background: var(--panel-raised);
+    }
+    button {
+      height: 42px; padding: 0 17px; border: 0; border-radius: 12px;
+      color: var(--accent-ink); background: var(--accent); font-weight: 700; cursor: pointer;
+    }
+    button:hover { filter: brightness(1.06); }
+    button:disabled { cursor: wait; opacity: .65; }
+    .hint { display: flex; justify-content: space-between; gap: 12px; margin: 9px 3px 0; color: var(--muted); font-size: 11px; }
+    .empty-warning { margin-top: 14px; padding: 12px 14px; border: 1px solid #5b5033; border-radius: 12px; color: #e9dba9; background: #322e20; font-size: 12px; line-height: 1.6; }
+    .empty-warning code { color: #fff0b7; }
+    @media (max-width: 580px) {
+      .shell { width: min(100% - 20px, 900px); padding-top: 18px; }
+      .chat { min-height: 54vh; padding: 15px; }
+      .composer { grid-template-columns: 1fr; }
+      .controls { justify-content: space-between; }
+      .message { max-width: 94%; }
+      .hint { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="brand">
+        <div class="mark" aria-hidden="true">✳</div>
+        <div>
+          <h1>Assistente de conhecimento</h1>
+          <p class="subtitle">RAG · respostas com base na sua biblioteca</p>
+        </div>
+      </div>
+      <div class="status" aria-live="polite"><span class="status-dot"></span><span id="status-text">A ligar</span></div>
+    </header>
+    <main>
+      <p class="intro">Faça uma pergunta. O assistente pesquisa a Wikipédia em tempo real, guarda o artigo no índice local e responde com texto, fontes e, quando disponível, uma ilustração do artigo.</p>
+      <section id="chat" class="chat" aria-label="Conversa" aria-live="polite">
+        <div id="empty-state" class="empty-state">
+          <div class="empty-icon" aria-hidden="true">⌕</div>
+          <h2>Por onde começamos?</h2>
+          <p>Com base no nosso repositório de conhecimento geral, aqui está a visão geral sobre [Tema]. Este resumo foca-se nos pontos essenciais extraídos das fontes primárias. Podemos detalhar os processos ou casos específicos conforme o seu interesse.</p>
+        </div>
+      </section>
+      <div id="empty-warning" class="empty-warning" hidden>
+        A biblioteca local ainda está vazia. Ao fazer uma pergunta, o artigo encontrado na Wikipédia será adicionado automaticamente.
+      </div>
+      <form id="composer" class="composer">
+        <textarea id="question" aria-label="A sua pergunta" placeholder="Escreva a sua pergunta…" maxlength="8000" required></textarea>
+        <div class="controls">
+          <select id="level" aria-label="Nível de explicação">
+            <option value="">Todos os níveis</option>
+            <option value="basico">Básico</option>
+            <option value="intermediario">Intermediário</option>
+            <option value="avancado">Avançado</option>
+          </select>
+          <button id="send" type="submit">Enviar ↗</button>
+        </div>
+      </form>
+      <div class="hint"><span>Enter para enviar · Shift+Enter para nova linha</span><span>O agente pode cometer erros; confirme informações importantes nas fontes.</span></div>
+    </main>
+  </div>
+  <script>
+    const chat = document.getElementById("chat");
+    const form = document.getElementById("composer");
+    const questionInput = document.getElementById("question");
+    const levelInput = document.getElementById("level");
+    const sendButton = document.getElementById("send");
+    const emptyState = document.getElementById("empty-state");
+    const emptyWarning = document.getElementById("empty-warning");
+    const statusText = document.getElementById("status-text");
+    const conversationHistory = [];
+
+    function renderAssistantText(container, text) {
+      const markdownPattern = /!\[([^\]\n]{0,300})\]\((https:\/\/[^)\s]+)\)|\[([^\]\n]{1,200})\]\((https:\/\/[^)\s]+)\)/g;
+      const appendText = (value) => container.append(document.createTextNode(value));
+      let offset = 0;
+      let match;
+
+      while ((match = markdownPattern.exec(text)) !== null) {
+        appendText(text.slice(offset, match.index));
+        let parsedUrl;
+        try {
+          parsedUrl = new URL(match[2] || match[4]);
+        } catch {
+          appendText(match[0]);
+          offset = markdownPattern.lastIndex;
+          continue;
+        }
+
+        if (
+          match[1] !== undefined &&
+          parsedUrl.hostname === "upload.wikimedia.org" &&
+          parsedUrl.username === "" &&
+          parsedUrl.password === ""
+        ) {
+          const figure = document.createElement("figure");
+          figure.className = "wiki-illustration";
+          const image = document.createElement("img");
+          image.src = parsedUrl.href;
+          image.alt = match[1];
+          image.loading = "lazy";
+          image.referrerPolicy = "no-referrer";
+          const caption = document.createElement("figcaption");
+          caption.textContent = match[1];
+          figure.append(image, caption);
+          container.append(figure);
+        } else if (
+          match[3] !== undefined &&
+          parsedUrl.username === "" &&
+          parsedUrl.password === "" &&
+          (parsedUrl.hostname === "commons.wikimedia.org" ||
+            (parsedUrl.hostname.endsWith(".wikipedia.org") &&
+              parsedUrl.pathname.startsWith("/wiki/File:"))
+          )
+        ) {
+          const link = document.createElement("a");
+          link.href = parsedUrl.href;
+          link.textContent = match[3];
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          container.append(link);
+        } else {
+          appendText(match[0]);
+        }
+        offset = markdownPattern.lastIndex;
+      }
+      appendText(text.slice(offset));
+    }
+
+    function addMessage(role, text, isError = false) {
+      emptyState.hidden = true;
+      const article = document.createElement("article");
+      article.className = `message ${role}${isError ? " error" : ""}`;
+      const label = document.createElement("span");
+      label.className = "message-label";
+      label.textContent = role === "user" ? "Você" : (isError ? "Aviso" : "Assistente");
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      if (role === "assistant" && !isError) renderAssistantText(bubble, text);
+      else bubble.textContent = text;
+      article.append(label, bubble);
+      chat.append(article);
+      chat.scrollTop = chat.scrollHeight;
+      return article;
+    }
+
+    async function loadStatus() {
+      try {
+        const response = await fetch("/api/status");
+        if (!response.ok) throw new Error("Não foi possível consultar o estado.");
+        const data = await response.json();
+        const mode = data.generation_mode === "wikipedia"
+          ? "Wikipédia · tempo real"
+          : data.generation_mode === "llm" ? "LLM ativo" : "resposta local";
+        statusText.textContent = `${data.indexed_chunks} trechos · ${mode}`;
+        emptyWarning.hidden = data.indexed_chunks > 0;
+      } catch {
+        statusText.textContent = "Ligação indisponível";
+      }
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const question = questionInput.value.trim();
+      if (!question) return;
+
+      addMessage("user", question);
+      const priorHistory = conversationHistory.slice(-12);
+      conversationHistory.push({ role: "user", content: question.slice(0, 1000) });
+      questionInput.value = "";
+      sendButton.disabled = true;
+      sendButton.textContent = "A pensar…";
+      const pending = addMessage("assistant", "A procurar na biblioteca…");
+
+      try {
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            question,
+            level: levelInput.value || null,
+            history: priorHistory,
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "O pedido falhou.");
+        renderAssistantText(pending.querySelector(".bubble"), data.answer);
+        pending.querySelector(".message-label").textContent =
+          data.generation_mode === "wikipedia"
+            ? "Assistente · Wikipédia"
+            : data.generation_mode === "llm" ? "Assistente · LLM" : "Assistente · resposta local";
+        conversationHistory.push({ role: "assistant", content: data.answer.slice(0, 1000) });
+      } catch (error) {
+        pending.classList.add("error");
+        pending.querySelector(".bubble").textContent = error.message;
+        pending.querySelector(".message-label").textContent = "Aviso";
+      } finally {
+        sendButton.disabled = false;
+        sendButton.textContent = "Enviar ↗";
+        questionInput.focus();
+        chat.scrollTop = chat.scrollHeight;
+      }
+    });
+
+    questionInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+    });
+
+    loadStatus();
+    questionInput.focus();
+  </script>
+</body>
+</html>

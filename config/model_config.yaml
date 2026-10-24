@@ -1,0 +1,39 @@
+default_provider: gemini
+local:
+  model_name: google/flan-t5-small
+  device: -1
+  temperature: 0.7
+  max_new_tokens: 250
+gemini:
+  model_name: gemini-2.5-flash
+  temperature: 0.7
+  max_output_tokens: 500
+openai:
+  model_name: gpt-4o-mini
+  temperature: 0.7
+  max_tokens: 500
+anthropic:
+  model_name: claude-3-5-sonnet-20241022
+  temperature: 0.5
+  max_tokens: 1000
+cache:
+  enabled: true
+  ttl_seconds: 3600
+rag:
+  embedding_provider: hash
+  dimensions: 512
+  database_path: data/vectors-wikipedia.sqlite3
+  chunk_size: 160
+  chunk_overlap: 30
+  top_k: 4
+wikipedia:
+  enabled: false
+  language: pt
+  topic: Inteligência artificial
+  timeout_seconds: 15
+  output_dir: data/prompts
+  universal_curriculum:
+    output_dir: data/universal_curriculum
+cognition:
+  memory_path: data/cognitive_memory.sqlite3
+  vocabulary_path: data/personal_lexicon.json

@@ -1,187 +1,168 @@
-import os
-import time
-import logging
-import logging.config
-import yaml
-from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+# Generative AI Project MVP
 
-# ==========================================
-# 1. CONFIGURATIONS & LOGGING
-# ==========================================
+This repository contains a runnable, modular Python MVP with YAML-based
+configuration, retrieval-augmented generation (RAG), a persistent SQLite vector
+store, Gemini, OpenAI, and Anthropic clients, and an optional local Hugging Face
+Transformers model.
 
-LOGGING_CONFIG = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "standard": {
-            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-        }
-    },
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-            "level": "INFO",
-            "formatter": "standard",
-            "stream": "ext://sys.stdout"
-        }
-    },
-    "loggers": {
-        "app": {
-            "level": "INFO",
-            "handlers": ["console"],
-            "propagate": False
-        }
-    }
-}
+## Project layout
 
-logging.config.dictConfig(LOGGING_CONFIG)
-logger = logging.getLogger("app")
+```text
+config/                 Application and logging YAML configuration
+examples/               Runnable completion example
+src/llm/                Provider interface, clients, and provider factory
+src/rag/                Document chunking, embeddings, SQLite vectors, and RAG
+src/cognition/          Cognitive memory and contextual Wikipedia discovery
+src/utils/wiki_extractor.py Wikipedia API extraction, learning levels, and JSON export
+src/web/                Local browser chat interface and HTTP handler
+src/prompt_engineering/ Prompt templates and chain
+src/utils/              Logger and in-memory cache
+src/handlers/           Application error handling
+tests/                  Unit tests
+main.py                 Application entry point
+requirements.txt        Python dependencies
+Dockerfile              Container image definition
+```
 
-# Model configuration schema simulation
-MODEL_CONFIG = {
-    "default_provider": "openai",
-    "openai": {
-        "model_name": "gpt-4o-mini",
-        "temperature": 0.7,
-        "max_tokens": 500
-    },
-    "cache": {
-        "enabled": True,
-        "ttl_seconds": 3600
-    }
-}
+## Run locally
 
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python main.py
+```
 
-# ==========================================
-# 2. UTILS & CACHE (src/utils/)
-# ==========================================
+Gemini is the provider used by the standalone model-generation example
+(`gemini-2.5-flash`). To configure its key without entering it into a terminal,
+open the workspace `.env` file in VS Code and set
+`GEMINI_API_KEY=your-new-key`. The application loads this file automatically
+on each startup. `.env` is excluded by `.gitignore`; do not commit it. You can
+start from `.env.example`.
+The browser chat and `--ask` do not require this key. They search the official
+Wikipedia API for every question, save the retrieved article into
+`data/vectors-wikipedia.sqlite3`, and return attributed source excerpts without
+calling Gemini. Local lexical embeddings (`hash`) maintain the index without
+an embedding API key or quota. The standalone model-generation example uses the configured provider. To use
+the local Flan-T5-Small model instead, set `default_provider: local` in
+`config/model_config.yaml`. The first run downloads the model from Hugging Face;
+after it is cached, inference runs on the configured local device (`-1` means
+CPU, and `0` selects the first CUDA GPU). This uses local compute and memory.
+The browser Wikipedia chat continues returning the complete sourced article
+text directly from Wikipedia; it does not send that text to an LLM.
+To run the standalone local Wikipedia Q&A example, use
+`.venv/bin/python examples/run_local_ai.py`. Wikipedia search still requires
+network access, but the question and retrieved context are passed to the local
+model rather than a hosted LLM API.
+When the configured provider is used for generated answers, matching lexicon
+entries are added to the prompt as supplemental memory. The lexicon does not
+change model weights and is not fine-tuning; factual answers must remain
+grounded in cited source excerpts.
 
-class SimpleCache:
-    """In-memory cache with TTL support."""
-    def __init__(self, default_ttl: int = 3600):
-        self._cache: Dict[str, Dict[str, Any]] = {}
-        self.default_ttl = default_ttl
+The standalone RAG example indexes a short document and answers a question
+using retrieved chunks. The web chat uses the configured local database path.
+The `rag` section also controls chunk size, overlap, and retrieval count.
 
-    def get(self, key: str) -> Optional[Any]:
-        if key in self._cache:
-            item = self._cache[key]
-            if time.time() < item["expires_at"]:
-                return item["value"]
-            else:
-                del self._cache[key]
-        return None
+## Progressive Wikipedia RAG
 
-    def set(self, key: str, value: Any, ttl: Optional[int] = None):
-        ttl = ttl if ttl is not None else self.default_ttl
-        self._cache[key] = {
-            "value": value,
-            "expires_at": time.time() + ttl
-        }
+Fetch and index a Portuguese Wikipedia article, then answer with excerpts from
+the official Wikipedia API:
 
+```bash
+python main.py --wiki-topic "Inteligência artificial" \
+  --ask "O que é inteligência artificial?" --level basico
+```
 
-# ==========================================
-# 3. LLM CLIENT LAYER (src/llm/)
-# ==========================================
+Use `--level intermediario` or `--level avancado` to select matching sections.
+Each question is searched live through the official MediaWiki API, and the
+article is added or refreshed in the local SQLite index. Extracted sections
+are saved with source and CC BY-SA attribution metadata in `data/prompts/`.
+Section levels are heuristic: the introduction is basic, recognizable
+mechanism/history/application sections are intermediate, and advanced topics
+or later sections are advanced.
 
-class BaseLLMClient(ABC):
-    """Abstract base class for LLM clients."""
-    @abstractmethod
-    def generate(self, prompt: str, **kwargs) -> str:
-        pass
+To ingest the curated universal curriculum (science, society, computing, and
+humanities) into the three level directories and the vector database:
 
-class GPTClient(BaseLLMClient):
-    """OpenAI GPT client implementation."""
-    def __init__(self, config: Optional[dict] = None):
-        self.config = config or MODEL_CONFIG["openai"]
-        self.api_key = os.getenv("OPENAI_API_KEY", "mock-key")
-        self.model_name = self.config.get("model_name", "gpt-4o-mini")
+```bash
+python main.py --universal-curriculum
+```
 
-    def generate(self, prompt: str, **kwargs) -> str:
-        logger.info(f"Generating output using model: {self.model_name}")
+The starter catalog includes 11 foundational articles and four advanced
+related articles (machine learning, neural networks, quantum mechanics, and
+game theory). Files are written to
+`data/universal_curriculum/nivel_1_basico/`,
+`data/universal_curriculum/nivel_2_intermediario/`, and
+`data/universal_curriculum/nivel_3_avancado/` (one JSON per article and level;
+some files can have an empty `sections` list). Advanced related articles are
+placed in the advanced track; sections in the foundational articles use the
+extractor's title-and-position heuristic. Override the output directory with
+`--curriculum-output PATH`. The command accesses Wikipedia and indexes text
+using local lexical embeddings, without Gemini embedding requests.
 
-        # Fallback mock mode if no API key is set
-        if self.api_key == "mock-key":
-            logger.warning("No OPENAI_API_KEY set. Operating in mock mode.")
-            return f"[MOCK RESPONSE - {self.model_name}]: Processed prompt: '{prompt[:40]}...'"
+This process builds a local knowledge index; it does not fine-tune or train
+language-model weights.
 
-        try:
-            from openai import OpenAI
-            client = OpenAI(api_key=self.api_key)
-            response = client.chat.completions.create(
-                model=self.model_name,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=kwargs.get("temperature", self.config.get("temperature", 0.7)),
-                max_tokens=kwargs.get("max_tokens", self.config.get("max_tokens", 500))
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            logger.error(f"LLM Provider Error: {e}")
-            raise e
+`--ask` performs a live Wikipedia search for each question and refreshes the
+local index with the matching article:
 
+```bash
+python main.py --ask "O que é o método científico?" --level basico
+python main.py --ask "Como funciona a aprendizagem de máquina?" --level avancado
+```
 
-# ==========================================
-# 4. PROMPT ENGINEERING (src/prompt_engineering/)
-# ==========================================
+Run the unit tests with:
 
-class PromptTemplate:
-    """Prompt template engine."""
-    def __init__(self, template_str: str):
-        self.template_str = template_str
+```bash
+.venv/bin/python -m unittest discover -s tests
+```
 
-    def format(self, **kwargs) -> str:
-        try:
-            return self.template_str.format(**kwargs)
-        except KeyError as e:
-            raise ValueError(f"Missing variable in prompt template: {e}")
+The MVP's browser chat interface is a local-only HTTP service, not a public
+production API. Start it with:
 
-SUMMARIZATION_TEMPLATE = PromptTemplate(
-    "Summarize the following text in under {max_words} words:\n\n{text}"
-)
+```bash
+python main.py --chat
+```
 
+Then open `http://127.0.0.1:8000`. For Codespaces, open the forwarded port 8000
+in the Ports panel. Use `--port 8080` to choose a different port. The server
+binds to loopback only; requests from unrelated browser origins are rejected.
+Each question triggers a live Wikipedia search and adds the matching article
+to the local index. Replies contain source excerpts and attribution, without
+Gemini generation.
+The reply displays all text sections retrieved for the selected article; it
+does not truncate section length or omit sections based on the selected level.
+The level selector still controls the cognitive metadata recorded for the
+interaction.
+When an article has a Wikimedia thumbnail, the chat also shows the image with
+alt text and a link to the file description/license page. Images are optional:
+articles without a thumbnail still return their complete text. The browser
+loads the image directly from `upload.wikimedia.org`; the chat only renders
+HTTPS images from that Wikimedia host and does not use HTML injection.
 
-# ==========================================
-# 5. ERROR HANDLERS (src/handlers/)
-# ==========================================
-
-def handle_llm_error(error: Exception) -> str:
-    logger.error(f"[ErrorHandler]: Handled exception -> {error}")
-    return "An error occurred while communicating with the AI service. Please try again later."
-
-
-# ==========================================
-# 6. APPLICATION PIPELINE & MAIN EXECUTION
-# ==========================================
-
-def run_pipeline(text: str, max_words: int = 15):
-    cache = SimpleCache(default_ttl=3600)
-    client = GPTClient()
-
-    # Step 1: Format Prompt
-    prompt = SUMMARIZATION_TEMPLATE.format(max_words=max_words, text=text)
-
-    # Step 2: Cache Check
-    cached_output = cache.get(prompt)
-    if cached_output:
-        logger.info("Cache hit! Returning cached result.")
-        return cached_output
-
-    # Step 3: LLM Call
-    try:
-        output = client.generate(prompt)
-        cache.set(prompt, output)
-        return output
-    except Exception as e:
-        return handle_llm_error(e)
-
-
-if __name__ == "__main__":
-    logger.info("Starting Generative AI MVP Application...")
-    sample_text = (
-        "Generative Artificial Intelligence refers to models or algorithms that create new content, "
-        "including audio, code, images, text, simulations, and videos based on learned patterns."
-    )
-    result = run_pipeline(sample_text, max_words=20)
-    print("\n--- OUTPUT ---")
-    print(result)
-    print("--------------\n")
+The chat also estimates a learning level from the question, assesses whether
+local context is available, and stores the sourced interaction in
+`data/cognitive_memory.sqlite3` for up to seven days. The cognitive assessment
+uses simple heuristics; it is not model training or a guarantee that a response
+is correct. Semantic Wikipedia discovery extracts query concepts, searches the
+official MediaWiki full-text API using the question and its key terms, and
+reranks candidate snippets locally with typo-tolerant term matching. Short
+anaphoric follow-ups can use prior question context; a new topical question is
+searched independently. This is contextual lexical matching, not
+embedding-based semantic similarity. The local SQLite vector index retains
+retrieved Wikipedia passages separately.
+For each successful Wikipedia chat answer, the configured
+`cognition.vocabulary_path` (default `data/personal_lexicon.json`) also stores
+the article title, lead text, question context, source URL, exposure count, and
+highest learning level observed from the selected or inferred level. Repeated
+exposure increases the count; it does not automatically certify mastery. For
+generated answers, relevant records are retrieved into the prompt as local
+context. The JSON lexicon persists across runs; this contextual learning does
+not update language-model weights or constitute fine-tuning.
+Try the standalone vocabulary demonstration with
+`.venv/bin/python examples/run_vocabulary_growth.py`; it fetches a Portuguese
+Wikipedia article and records its introduction and source in the same lexicon.
+The browser keeps a short recent conversation in memory so follow-up questions
+can refer to prior turns; this history is sent with chat requests but is not
+persisted after the page is reloaded.
+SQLite vector search uses exact cosine similarity and is intended for local MVP
+workloads, not large-scale concurrent production traffic.
